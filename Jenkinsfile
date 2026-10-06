@@ -23,13 +23,18 @@ pipeline {
 
         stage('Archive') {
             steps {
-                archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+                archiveArtifacts(
+                    artifacts: 'target/payment-2.7.jar',
+                    fingerprint: true
+                )
             }
         }
 
         stage('Approval') {
             when {
-                branch 'main'
+                expression {
+                    env.GIT_BRANCH == 'origin/main'
+                }
             }
 
             steps {
@@ -42,31 +47,59 @@ pipeline {
 
         stage('Deploy') {
             when {
-                branch 'main'
+                expression {
+                    env.GIT_BRANCH == 'origin/main'
+                }
             }
 
             steps {
-                bat 'deploy.bat'
+                bat '''
+                    echo ========================================
+                    echo Starting Production Deployment
+                    echo ========================================
+
+                    if not exist target\\payment-2.7.jar (
+                        echo ERROR: payment-2.7.jar not found
+                        exit /b 1
+                    )
+
+                    copy /Y target\\payment-2.7.jar deployed-payment.jar
+
+                    if errorlevel 1 (
+                        echo ERROR: Deployment failed
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo Production deployment completed successfully.
+                    echo Deployed artifact: payment-2.7.jar
+                    echo ========================================
+                '''
             }
         }
     }
 
     post {
+
         always {
-            junit 'target/surefire-reports/*.xml'
+            junit(
+                testResults: 'target/surefire-reports/*.xml',
+                allowEmptyResults: false
+            )
+
             cleanWs()
         }
 
         success {
-            echo 'Build and deployment completed successfully.'
+            echo 'SUCCESS: Build, tests, archive and deployment completed successfully.'
         }
 
         failure {
-            echo 'Build or deployment failed.'
+            echo 'FAILURE: Build, test or deployment failed.'
         }
 
         aborted {
-            echo 'Production deployment was aborted.'
+            echo 'ABORTED: Production deployment was rejected or cancelled.'
         }
     }
 }
